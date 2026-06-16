@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Retail Sales Operations Analysis: Apple Dataset</title>
+<style>
+  /* ── TOKENS ─────────────────────────────────────────────── */
+  :root {
+    --ink:        #0f1117;
+    --ink-light:  #4a4f5e;
+    --border:     #dde1ea;
+    --bg:         #f7f8fc;
+    --white:      #ffffff;
+    --accent:     #1a56db;
+    --accent-dim: #e8eefb;
+    --warn:       #c0392b;
+    --warn-dim:   #fdf0ee;
+    --green:      #1a7f4b;
+    --green-dim:  #eaf5ef;
+    --amber:      #b45309;
+    --amber-dim:  #fef3e2;
+    --mono:       'Courier New', Courier, monospace;
+  }
+
+  /* ── RESET ──────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Georgia', serif;
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--ink);
+    background: var(--bg);
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── LAYOUT ─────────────────────────────────────────────── */
+  .page-wrap { max-width: 860px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* ── HEADER ─────────────────────────────────────────────── */
+  header {
+    background: var(--ink);
+    color: var(--white);
+    padding: 56px 0 44px;
+    margin-bottom: 48px;
+  }
+  header .page-wrap { padding-top: 0; padding-bottom: 0; }
+  .eyebrow {
+    font-family: 'Arial', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #8b93a8;
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-size: clamp(26px, 4vw, 40px);
+    font-weight: normal;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    margin-bottom: 18px;
+  }
+  h1 em { font-style: italic; color: #8b93a8; }
+  .meta {
+    font-family: 'Arial', sans-serif;
+    font-size: 13px;
+    color: #8b93a8;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  .meta span::before { content: '·  '; }
+
+  /* ── EXEC SUMMARY ───────────────────────────────────────── */
+  .exec-summary {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    padding: 28px 32px;
+    margin-bottom: 48px;
+    border-radius: 0 6px 6px 0;
+  }
+  .exec-summary h2 {
+    font-family: 'Arial', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+  .exec-summary p {
+    font-size: 15.5px;
+    color: var(--ink);
+    margin-bottom: 10px;
+  }
+  .exec-summary p:last-child { margin-bottom: 0; }
+
+  /* ── KPI STRIP ──────────────────────────────────────────── */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+    margin-bottom: 56px;
+  }
+  .kpi {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 18px;
+    text-align: center;
+  }
+  .kpi .num {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: 'Arial', sans-serif;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .kpi .num.warn  { color: var(--warn); }
+  .kpi .num.good  { color: var(--green); }
+  .kpi .num.amber { color: var(--amber); }
+  .kpi .num.blue  { color: var(--accent); }
+  .kpi .label {
+    font-family: 'Arial', sans-serif;
+    font-size: 11.5px;
+    color: var(--ink-light);
+    line-height: 1.4;
+  }
+
+  /* ── SECTION HEADINGS ───────────────────────────────────── */
+  .section { margin-bottom: 56px; }
+  .section-label {
+    font-family: 'Arial', sans-serif;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-light);
+    margin-bottom: 6px;
+  }
+  h2.section-title {
+    font-size: 22px;
+    font-weight: normal;
+    letter-spacing: -0.01em;
+    margin-bottom: 22px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── FINDING CARDS ──────────────────────────────────────── */
+  .finding {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .finding-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 22px 24px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .finding-number {
+    font-family: 'Arial', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--white);
+    background: var(--ink);
+    border-radius: 4px;
+    padding: 3px 7px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .finding-title { font-size: 16.5px; font-weight: normal; line-height: 1.35; }
+  .finding-body { padding: 20px 24px; }
+  .finding-body p { font-size: 14.5px; margin-bottom: 12px; color: var(--ink); }
+  .finding-body p:last-child { margin-bottom: 0; }
+
+  /* ── BUSINESS IMPACT BLOCK ──────────────────────────────── */
+  .impact-block {
+    border-radius: 6px;
+    padding: 16px 18px;
+    margin-top: 14px;
+    margin-bottom: 14px;
+  }
+  .impact-block.red   { background: var(--warn-dim);  border-left: 3px solid var(--warn); }
+  .impact-block.green { background: var(--green-dim); border-left: 3px solid var(--green); }
+  .impact-block.amber { background: var(--amber-dim); border-left: 3px solid var(--amber); }
+  .impact-block.blue  { background: var(--accent-dim);border-left: 3px solid var(--accent); }
+  .impact-label {
+    font-family: 'Arial', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .impact-block.red   .impact-label { color: var(--warn); }
+  .impact-block.green .impact-label { color: var(--green); }
+  .impact-block.amber .impact-label { color: var(--amber); }
+  .impact-block.blue  .impact-label { color: var(--accent); }
+  .impact-block p { font-size: 14px; line-height: 1.6; margin: 0; }
+
+  /* ── DATA TABLE ─────────────────────────────────────────── */
+  .data-table-wrap { overflow-x: auto; margin: 16px 0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Arial', sans-serif;
+    font-size: 13px;
+  }
+  th {
+    background: var(--ink);
+    color: var(--white);
+    text-align: left;
+    padding: 9px 12px;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--ink);
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: var(--bg); }
+  .neg  { color: var(--warn); font-weight: 700; }
+  .pos  { color: var(--green); font-weight: 700; }
+  .flag { font-size: 11px; color: var(--warn); font-weight: 700; margin-left: 4px; }
+
+  /* ── RECOMMENDATIONS ────────────────────────────────────── */
+  .rec-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .rec-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .rec-priority {
+    font-family: 'Arial', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .rec-priority.p1 { color: var(--warn); }
+  .rec-priority.p2 { color: var(--amber); }
+  .rec-priority.p3 { color: var(--accent); }
+  .rec-card h3 { font-size: 15px; font-weight: normal; margin-bottom: 10px; line-height: 1.3; }
+  .rec-card p  { font-size: 13.5px; color: var(--ink-light); line-height: 1.6; margin-bottom: 10px; }
+  .rec-card p:last-child { margin-bottom: 0; }
+  .rec-impact {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    color: var(--ink);
+    margin-top: 10px;
+  }
+
+  /* ── METHODOLOGY ────────────────────────────────────────── */
+  .method-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .method-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+  }
+  .method-card .tool {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .method-card p { font-size: 13px; color: var(--ink-light); line-height: 1.5; }
+
+  /* ── MODEL RESULTS ──────────────────────────────────────── */
+  .model-stat {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    margin: 3px 4px 3px 0;
+    color: var(--ink);
+  }
+
+  /* ── FOOTER ─────────────────────────────────────────────── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 28px;
+    margin-top: 64px;
+    font-family: 'Arial', sans-serif;
+    font-size: 12.5px;
+    color: var(--ink-light);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  footer a { color: var(--ink-light); }
+
+  /* ── NAV ────────────────────────────────────────────────── */
+  .sticky-nav {
+    position: sticky;
+    top: 0;
+    background: var(--white);
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+    padding: 10px 0;
+  }
+  .sticky-nav .page-wrap {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .sticky-nav a {
+    font-family: 'Arial', sans-serif;
+    font-size: 12.5px;
+    color: var(--ink-light);
+    font-weight: 500;
+  }
+  .sticky-nav a:hover { color: var(--accent); text-decoration: none; }
+
+  @media (max-width: 600px) {
+    .exec-summary { padding: 20px 18px; }
+    .finding-header, .finding-body { padding: 16px; }
+    .sticky-nav .page-wrap { gap: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ─────────────────────────────────────────── -->
+<header>
+  <div class="page-wrap">
+    <p class="eyebrow">Retail Operations · Case Study</p>
+    <h1>A 10x revenue surge <em>doesn't explain itself.</em><br>Here's what the data found.</h1>
+    <div class="meta">
+      <span>Julian Batto-Hokson</span>
+      <span>20 months · 3 markets · 3 product categories</span>
+      <span>Python · MySQL · Tableau · OLS Regression</span>
+      <span>April 2026</span>
+    </div>
+  </div>
+</header>
+
+<!-- ── STICKY NAV ──────────────────────────────────────── -->
+<nav class="sticky-nav">
+  <div class="page-wrap">
+    <a href="#summary">Summary</a>
+    <a href="#findings">Findings</a>
+    <a href="#recommendations">Recommendations</a>
+    <a href="#model">Model</a>
+    <a href="#methodology">Methodology</a>
+  </div>
+</nav>
+
+<div class="page-wrap">
+
+<!-- ── EXECUTIVE SUMMARY ───────────────────────────────── -->
+<section id="summary" class="exec-summary" style="margin-top:40px;">
+  <h2>Executive Summary</h2>
+  <p>Between December 2014 and July 2016, this retail portfolio experienced a 10x revenue surge in a single month (August 2015). This analysis confirms the jump was structural, not a data artifact. Monthly revenue shifted from a sub-$50K baseline to a sustained $460–500K average and stayed there.</p>
+  <p>The surge, however, exposed a profitability problem hiding underneath the revenue growth. Bikes, the highest-volume category in the largest market (US), operate at a <strong>negative gross margin of -1.5%</strong>. Every dollar of US Bike revenue currently destroys value at the gross profit line. At $650K in Road Bike revenue alone, that represents approximately $9,750 in gross losses before operating expenses (calculated as $650K x -1.5%; assumes current volume holds).</p>
+  <p>The path to margin recovery does not require cutting Bike revenue. It requires repricing US Bike SKUs and cross-selling Accessories (which carry up to 22% gross margin) to the demographic segment already spending the most: <strong>female customers aged 45–54</strong>.</p>
+</section>
+
+<!-- ── KPI STRIP ───────────────────────────────────────── -->
+<div class="kpi-strip">
+  <div class="kpi">
+    <div class="num good">1,338%</div>
+    <div class="label">Revenue growth after Aug 2015 structural break</div>
+  </div>
+  <div class="kpi">
+    <div class="num warn">−1.5%</div>
+    <div class="label">US Bike gross margin, the portfolio's largest revenue category</div>
+  </div>
+  <div class="kpi">
+    <div class="num good">22%</div>
+    <div class="label">Peak gross margin on Accessories (Bike Racks, Fenders)</div>
+  </div>
+  <div class="kpi">
+    <div class="num blue">$1.95M</div>
+    <div class="label">Revenue from the 25–34 cohort, the dominant customer segment</div>
+  </div>
+  <div class="kpi">
+    <div class="num good">30.3%</div>
+    <div class="label">Germany Accessories margin vs. 14.7% in the US</div>
+  </div>
+  <div class="kpi">
+    <div class="num amber">0.674</div>
+    <div class="label">Time series R²; linear model understates the post-Aug 2015 period</div>
+  </div>
+</div>
+
+<!-- ── FINDINGS ────────────────────────────────────────── -->
+<section id="findings" class="section">
+  <p class="section-label">Analysis</p>
+  <h2 class="section-title">What the data shows, and what it means</h2>
+
+  <!-- F1 -->
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-number">01</span>
+      <span class="finding-title">August 2015 was a structural inflection point, not a seasonal spike</span>
+    </div>
+    <div class="finding-body">
+      <p>Monthly revenue held below $50K from December 2014 through July 2015, with minimal variance. In August 2015, revenue jumped to approximately $435K in a single month, a 10x increase. The 3-month rolling average confirms the shift held: post-August revenue averaged $460–500K per month through the rest of the observation window.</p>
+      <p>The final data point (July 2016: ~$210K) is almost certainly a data truncation artifact, not a real revenue contraction. Both the revenue signal and the margin signal drop simultaneously in that month, which is consistent with a partial-month data pull at period-end rather than a business event.</p>
+      <div class="impact-block blue">
+        <p class="impact-label">Interpretation</p>
+        <p>Something changed in August 2015: a new product line, a distribution channel opening, a pricing change, or a market expansion. The data confirms the inflection was real and sustained. Finance should identify the business event that caused it and use it as a baseline for forecasting future expansion scenarios. A Chow test would formally verify the structural break and support that business case.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- F2 -->
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-number">02</span>
+      <span class="finding-title">US Bike sales are loss-generating at the gross profit line</span>
+    </div>
+    <div class="finding-body">
+      <p>The United States is almost certainly the largest revenue market by volume. Its core high-volume category (Bikes) operates at a <strong class="neg">−1.5% gross margin</strong>. Road Bikes alone generated approximately $650K in revenue. At −1.5%, that translates to roughly $9,750 in gross losses on $650K of revenue, before any operating costs are applied.</p>
+      <div class="data-table-wrap">
+        <table>
+          <thead>
+            <tr><th>Market</th><th>Accessories Margin</th><th>Bikes Margin</th><th>Clothing Margin</th><th>Assessment</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>France</td><td>14.0%</td><td>0.8%</td><td>10.6%</td><td>Low across all categories</td></tr>
+            <tr><td>Germany</td><td class="pos">30.3%</td><td class="pos">16.7%</td><td class="pos">28.6%</td><td>Highest-margin market</td></tr>
+            <tr><td>United States</td><td>14.7%</td><td class="neg">−1.5%</td><td>12.8%</td><td>Bikes margin NEGATIVE <span class="flag">⚑ FLAG</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="impact-block red">
+        <p class="impact-label">What this means for revenue planning</p>
+        <p>A US Bike pricing audit is the highest-ROI action available from this dataset. The question for the pricing team is specific: what price increase on US Bike SKUs is needed to reach breakeven at current volume, and at what point does volume elasticity make that increase self-defeating? Germany's 16.7% Bike margin on the same product category suggests the margin gap is a pricing and cost structure problem, not an inherent product-category limitation.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- F3 -->
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-number">03</span>
+      <span class="finding-title">Accessories are the margin engine, but they're being undersold to the highest-value customers</span>
+    </div>
+    <div class="finding-body">
+      <p>Accessories dominate portfolio profitability post-August 2015, accounting for the majority of stacked gross margin in every month through mid-2016. Fenders and Bike Racks carry the highest margins in the entire product portfolio (21–22%) but generate minimal revenue in absolute terms, sitting in the low-revenue / high-margin quadrant.</p>
+      <p>The demographic data shows female customers aged 45–54 outspend male customers in their cohort and represent a female-dominant segment (53% of revenue). The OLS demographic regression identifies gender as the single largest positive revenue coefficient. Combined, this points to one specific opportunity:</p>
+      <div class="impact-block green">
+        <p class="impact-label">What this means for targeting</p>
+        <p>Female customers aged 45–54 are the highest-LTV segment in the portfolio and they are currently shopping a low-margin category (Bikes) more than a high-margin one (Accessories). A targeted campaign bundling Helmets, Fenders, and Bottles &amp; Cages with Bike purchases, aimed specifically at this cohort, improves blended margin without requiring a price increase or volume growth. If 10% of US Bike transactions added a $50 Accessories attach, that's approximately $3,250 in incremental high-margin revenue on the current volume base.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- F4 -->
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-number">04</span>
+      <span class="finding-title">Germany outperforms the US on margin by 15+ percentage points across every category</span>
+    </div>
+    <div class="finding-body">
+      <p>Germany achieves 30.3% on Accessories and 28.6% on Clothing, roughly double the US margins in both categories. Bike margin in Germany is 16.7% versus −1.5% in the US. This is an 18.2 percentage point gap on identical product categories sold across different markets.</p>
+      <div class="impact-block amber">
+        <p class="impact-label">What this means for market expansion</p>
+        <p>The Germany margin advantage is either a pricing difference, a cost structure difference, or a product mix difference, and that distinction matters for strategy. If Germany charges more for the same SKUs, that's a US underpricing problem. If Germany's cost structure is lower (freight, distribution, duties), that's an operational opportunity. If Germany sells more high-margin Accessories per transaction, that's a bundling and merchandising opportunity. A follow-on analysis pulling SKU-level unit price by market would separate these three explanations and quantify the expansion opportunity.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- F5 -->
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-number">05</span>
+      <span class="finding-title">The 25–34 cohort drives volume; the 45–54 cohort drives margin opportunity</span>
+    </div>
+    <div class="finding-body">
+      <p>The 25–34 age band is the dominant revenue segment at approximately $1.95M, nearly 20% above the next-highest group (35–44 at ~$1.6M). Revenue declines sharply at 55–64 (~$360K) and is negligible at 65+.</p>
+      <div class="data-table-wrap">
+        <table>
+          <thead>
+            <tr><th>Age Range</th><th>Est. Revenue</th><th>Female Share</th><th>Male Share</th><th>Strategic Note</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>17–24</td><td>~$870K</td><td>41%</td><td>59%</td><td>Entry market; male-dominant</td></tr>
+            <tr><td>25–34</td><td class="pos">~$1,950K</td><td>46%</td><td>54%</td><td>Largest segment; near gender parity</td></tr>
+            <tr><td>35–44</td><td>~$1,610K</td><td>49%</td><td>51%</td><td>Balanced; high-value</td></tr>
+            <tr><td>45–54</td><td>~$960K</td><td class="pos">53%</td><td>47%</td><td>Female-dominant; high LTV potential</td></tr>
+            <tr><td>55–64</td><td>~$360K</td><td>55%</td><td>45%</td><td>Female-dominant; smaller base</td></tr>
+            <tr><td>65+</td><td>~$30K</td><td>50%</td><td>50%</td><td>Negligible; not a priority segment</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="impact-block blue">
+        <p class="impact-label">What this means for campaign strategy</p>
+        <p>Don't confuse volume with value. The 25–34 cohort is the biggest spender in aggregate, but it's also the most competitive segment to acquire. The 45–54 cohort is female-dominant, already converting, and buying in a category where this portfolio has a margin advantage if cross-sells are executed. Marketing dollars allocated to the 45–54 female segment, specifically toward Accessories, generate higher margin per acquisition dollar than the same spend on the 25–34 volume segment.</p>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ── RECOMMENDATIONS ──────────────────────────────────── -->
+<section id="recommendations" class="section">
+  <p class="section-label">Action Items</p>
+  <h2 class="section-title">Recommended next steps, ranked by estimated impact</h2>
+  <div class="rec-grid">
+
+    <div class="rec-card">
+      <p class="rec-priority p1">P1: Immediate</p>
+      <h3>US Bike SKU pricing audit</h3>
+      <p>US Bikes are the largest revenue category in the largest market, and they're loss-generating. A SKU-level price-cost review is the single highest-ROI analytical action available from this dataset.</p>
+      <div class="rec-impact">Derivation: $650K Road Bike revenue x -1.5% margin = ~$9,750 gross loss at current volume. Recovery estimate assumes price adjustment closes margin to 0% with no volume loss -- a conservative floor.</div>
+    </div>
+
+    <div class="rec-card">
+      <p class="rec-priority p1">P1: Immediate</p>
+      <h3>Accessories cross-sell to 45–54 female segment</h3>
+      <p>Bundle Helmets, Fenders, and Bottles &amp; Cages with Bike purchases for the highest-LTV, highest-margin segment combination in the portfolio.</p>
+      <div class="rec-impact">Derivation: ~$650K Road Bike revenue implies roughly 650+ transactions at avg $1K per bike. 10% attach rate x $50 accessory x ~22% avg Accessories margin = ~$715 gross margin. At full portfolio scale, higher.</div>
+    </div>
+
+    <div class="rec-card">
+      <p class="rec-priority p2">P2: Near-term</p>
+      <h3>Investigate August 2015 inflection driver</h3>
+      <p>The 10x revenue jump is confirmed structural. The business event that caused it is unidentified. Apply a Chow test to formally verify the break, then document the cause. This turns a visual observation into a defensible forecast input.</p>
+      <div class="rec-impact">Output: baseline for future expansion scenario modeling</div>
+    </div>
+
+    <div class="rec-card">
+      <p class="rec-priority p2">P2: Near-term</p>
+      <h3>Germany market expansion business case</h3>
+      <p>Germany outperforms the US by 15+ margin points across all three categories. A revenue-by-SKU breakdown with unit economics would quantify whether Germany's margin advantage justifies increased market investment.</p>
+      <div class="rec-impact">Question to answer: is Germany's margin advantage pricing, cost, or mix?</div>
+    </div>
+
+    <div class="rec-card">
+      <p class="rec-priority p3">P3: Analytical follow-on</p>
+      <h3>Refit time series as piecewise regression</h3>
+      <p>The current OLS model is structurally misspecified; residuals are non-random and autocorrelation is present. A piecewise regression using August 2015 as the breakpoint, or an ARIMA(1,1,0) model, would produce defensible trend forecasts.</p>
+      <div class="rec-impact">Report Durbin-Watson statistic and adjusted R² alongside current R² = 0.674</div>
+    </div>
+
+    <div class="rec-card">
+      <p class="rec-priority p3">P3: Analytical follow-on</p>
+      <h3>Expand geographic distribution analysis</h3>
+      <p>California dominates US revenue (darkest concentration). The Midwest and Southeast show minimal revenue despite likely comparable market size. A state-level revenue-per-capita analysis would surface expansion targets with supporting rationale.</p>
+      <div class="rec-impact">Data available: state-level revenue already captured in current schema</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── MODEL RESULTS ────────────────────────────────────── -->
+<section id="model" class="section">
+  <p class="section-label">Statistical Models</p>
+  <h2 class="section-title">Two OLS models: what each one measures</h2>
+
+  <div class="finding" style="margin-bottom:20px;">
+    <div class="finding-header">
+      <span class="finding-number" style="background:var(--accent)">M1</span>
+      <span class="finding-title">Time Series Model: Does revenue trend upward over time?</span>
+    </div>
+    <div class="finding-body">
+      <p>A linear OLS regression was fitted on the monthly revenue time series, using a sequential time index as the sole predictor.</p>
+      <p>
+        <span class="model-stat">R² = 0.674</span>
+        <span class="model-stat">Slope = +$29,500 / month</span>
+        <span class="model-stat">p-value &lt; 0.001</span>
+        <span class="model-stat">n = 20 months</span>
+      </p>
+      <div class="impact-block amber">
+        <p class="impact-label">Model limitation -- read before using this number</p>
+        <p>The R² of 0.674 overstates model quality. The residual plot shows a systematic pattern: negative in early months, consistently positive post-August 2015, sharply negative at period-end. This is a signature of temporal autocorrelation and structural non-stationarity. The linear model treats a two-regime time series as one continuous trend. The $29,500/month slope is accurate as a whole-period average, but it should not be used for point forecasting without fitting a piecewise model at the August 2015 breakpoint.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-number" style="background:var(--accent)">M2</span>
+      <span class="finding-title">Demographic Model: What drives revenue at the transaction level?</span>
+    </div>
+    <div class="finding-body">
+      <p>A cross-sectional OLS regression was built at the demographic segment level, using age band, gender, product category, and quantity as predictors of revenue per transaction.</p>
+      <div class="impact-block green">
+        <p class="impact-label">What the model found</p>
+        <p>Gender is the single largest positive revenue coefficient in the demographic model. Female customers, controlling for age and product category, are associated with higher per-transaction revenue. This result drives the Accessories cross-sell recommendation toward the 45–54 female cohort; it's not just a demographic observation; it's a model-supported targeting signal.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── METHODOLOGY ──────────────────────────────────────── -->
+<section id="methodology" class="section">
+  <p class="section-label">Technical Reference</p>
+  <h2 class="section-title">Pipeline architecture &amp; data scope</h2>
+
+  <p style="font-size:14.5px; margin-bottom:20px; color:var(--ink-light);">This analysis was produced by a three-step pipeline. Each stage is independently auditable. Source code is available on GitHub.</p>
+
+  <div class="method-grid">
+    <div class="method-card">
+      <p class="tool">01_acs_etl.py</p>
+      <p>Reshapes raw wide-format Excel (weekly columns × measure rows) into a flat analytical table. Derives gross profit, margin, date dimensions, and age bands. Flags geographic data quality issues before output.</p>
+    </div>
+    <div class="method-card">
+      <p class="tool">02_acs_setup.sql</p>
+      <p>Loads cleaned CSV into a MySQL schema. Applies four exclusion filters: null states, cities filed as states, non-approved sub-categories, and zero-revenue rows. Builds production views and Tableau-ready aggregates.</p>
+    </div>
+    <div class="method-card">
+      <p class="tool">03_acs_analysis.py</p>
+      <p>Queries DB views, exports Tableau CSVs, runs both OLS regression models, and produces the residuals panel. Inline interpretation of p-values and R² makes output self-contained for non-technical reviewers.</p>
+    </div>
+    <div class="method-card">
+      <p class="tool">Tableau (7 views)</p>
+      <p>Revenue over time with rolling average, sub-category revenue/margin scatter, demographic breakdown, geographic choropleth, country margin comparison, monthly margin by category, and OLS fit visualization.</p>
+    </div>
+  </div>
+
+  <div style="margin-top:24px;">
+    <p class="section-label" style="margin-bottom:10px;">Data Scope</p>
+    <div class="data-table-wrap">
+      <table>
+        <thead><tr><th>Dimension</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Date range</td><td>December 2014 – July 2016 (20 months)</td></tr>
+          <tr><td>Product categories</td><td>Bikes, Accessories, Clothing (3 top-level; 15 sub-categories)</td></tr>
+          <tr><td>Geographic markets</td><td>United States (multi-state), France, Germany</td></tr>
+          <tr><td>Monthly revenue range</td><td>$10K – $640K</td></tr>
+          <tr><td>Largest single market</td><td>California (highest US revenue concentration)</td></tr>
+          <tr><td>Rows after exclusion filters</td><td>Documented in pipeline log; exclusion rate tracked per filter rule</td></tr>
+          <tr><td>Note on July 2016</td><td>Treated as partial-month truncation; excluded from trend modeling</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+</div><!-- end page-wrap -->
+
+<!-- ── FOOTER ──────────────────────────────────────────── -->
+<footer style="max-width:860px; margin:0 auto; padding: 0 24px 48px;">
+  <span>Julian Batto-Hokson · April 2026</span>
+  <span><a href="https://github.com/jbattohokson/Retail_Finance_Analysis">GitHub Repository</a> · Python · MySQL · Tableau · OLS Regression</span>
+</footer>
+
+</body>
+</html>
