@@ -1,0 +1,16 @@
+sub_category,product_category,total_revenue,total_cost,total_gross_profit,total_quantity,margin_pct,revenue_per_unit,revenue_rank_overall,revenue_rank_in_cat
+Tires and Tubes,Accessories,1571870.0,1304213.0,265777.0,14823.0,16.91,106.04,1,1
+Helmets,Accessories,1165770.0,969745.0,190642.0,4740.0,16.35,245.94,2,2
+Road Bikes,Bikes,637585.0,487053.0,14047.0,1956.0,2.2,325.96,3,1
+Bottles and Cages,Accessories,587587.0,478902.0,108685.0,8665.0,18.5,67.81,4,3
+Jerseys,Clothing,422795.0,360498.0,54996.0,1751.0,13.01,241.46,5,1
+Mountain Bikes,Bikes,342484.0,327811.0,12703.0,1000.0,3.71,342.48,6,2
+Fenders,Accessories,279083.0,219080.0,60003.0,1291.0,21.5,216.18,7,4
+Caps,Clothing,200570.0,165447.0,35123.0,2376.0,17.51,84.41,8,2
+Gloves,Clothing,175976.0,141494.0,34482.0,725.0,19.59,242.73,9,3
+Shorts,Clothing,100508.0,85680.0,10108.0,391.0,10.06,257.05,10,4
+Hydration Packs,Accessories,83959.0,71775.0,12184.0,332.0,14.51,252.89,11,5
+Cleaners,Accessories,70889.0,58256.0,12633.0,934.0,17.82,75.9,12,6
+Vests,Clothing,55783.0,46321.0,7567.0,222.0,13.57,251.27,13,5
+Socks,Clothing,51054.0,42885.0,8169.0,619.0,16.0,82.48,14,6
+Bike Racks,Accessories,26424.0,20640.0,5784.0,98.0,21.89,269.63,15,7

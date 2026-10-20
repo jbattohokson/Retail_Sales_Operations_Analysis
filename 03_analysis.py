@@ -1,18 +1,18 @@
 """
-03_acs_analysis.py
+03_analysis.py
 
-Apple Case Study — Step 3: Database Load, Tableau Exports, and Regression Analysis
+Retail Case Study — Step 3: Database Load, Tableau Exports, and Regression Analysis
 
 This is the third and final file in a three-step pipeline:
 
-    01_acs_etl.py       Reshapes raw Excel into apple_sales_clean.csv
-    02_acs_setup.sql    Loads CSV into DB, applies quality filters, builds views
-    03_acs_analysis.py  (this file) Loads CSV into DB, runs SQL setup, queries
+    01_etl.py       Reshapes raw Excel into retail_sales_clean.csv
+    02_setup.sql    Loads CSV into DB, applies quality filters, builds views
+    03_analysis.py  (this file) Loads CSV into DB, runs SQL setup, queries
                         views, exports Tableau-ready CSVs, and runs regression models
 
 What this file does:
-    Loads apple_sales_clean.csv into a local database (DuckDB preferred, SQLite
-    fallback), executes 02_acs_setup.sql to build all views and aggregation tables,
+    Loads retail_sales_clean.csv into a local database (DuckDB preferred, SQLite
+    fallback), executes 02_setup.sql to build all views and aggregation tables,
     then queries each view to produce four Tableau-ready CSV exports and two
     regression summaries.
 
@@ -23,16 +23,16 @@ What this file does:
     Why run SQL from Python rather than a DB client?
     Executing the SQL through Python keeps the pipeline as a single command.
     A reviewer or interviewer can run the project with two commands total:
-        python 01_acs_etl.py
-        python 03_acs_analysis.py
-        Open Tableau and connect to the output CSVs or apple_sales.db
+        python 01_etl.py
+        python 03_analysis.py
+        Open Tableau and connect to the output CSVs or retail_sales.db
 
 How to run:
-    python 03_acs_analysis.py
-    python 03_acs_analysis.py --csv apple_sales_clean.csv --sql 02_acs_setup.sql --db apple_sales.db --out ./exports
+    python 03_analysis.py
+    python 03_analysis.py --csv retail_sales_clean.csv --sql 02_setup.sql --db retail_sales.db --out ./exports
 
     Environment variables also accepted:
-    APPLE_CLEAN_CSV, APPLE_SQL, APPLE_DB, APPLE_OUT_DIR
+    RETAIL_CLEAN_CSV, RETAIL_SQL, RETAIL_DB, RETAIL_OUT_DIR
 
 Output files (written to ./exports/ by default):
     tableau_state_financials.csv      State x sub-category x month aggregates
@@ -97,11 +97,11 @@ PALETTE = {
 def resolve_args() -> tuple[Path, Path, Path, Path]:
     # CHANGE: all four default paths are now anchored to the script's own
     # directory using Path(__file__).resolve().parent.
-    # ORIGINAL: all four defaults were bare filenames ('apple_sales_clean.csv',
-    # '02_acs_setup.sql', 'apple_sales.db', 'exports') that resolve relative to
+    # ORIGINAL: all four defaults were bare filenames ('retail_sales_clean.csv',
+    # '02_setup.sql', 'retail_sales.db', 'exports') that resolve relative to
     # the process working directory.
     # WHY: when Python is launched via the full absolute path
-    # (/usr/local/bin/python3 /Users/.../03_acs_analysis.py), macOS sets the
+    # (/usr/local/bin/python3 /Users/.../03_analysis.py), macOS sets the
     # working directory to '/' — a read-only system partition. The --csv and
     # --sql existence checks then fail immediately with "file not found" even
     # though both files are sitting right next to the script. The --db and --out
@@ -111,26 +111,26 @@ def resolve_args() -> tuple[Path, Path, Path, Path]:
     script_dir = Path(__file__).resolve().parent
 
     parser = argparse.ArgumentParser(
-        description='Apple Case Study: Load DB, run SQL setup, export Tableau CSVs and regression outputs'
+        description='Retail Case Study: Load DB, run SQL setup, export Tableau CSVs and regression outputs'
     )
     parser.add_argument(
         '--csv',
-        default=os.environ.get('APPLE_CLEAN_CSV', str(script_dir / 'apple_sales_clean.csv')),
-        help='Path to apple_sales_clean.csv from step 1. Default: <script dir>/apple_sales_clean.csv'
+        default=os.environ.get('RETAIL_CLEAN_CSV', str(script_dir / 'retail_sales_clean.csv')),
+        help='Path to retail_sales_clean.csv from step 1. Default: <script dir>/retail_sales_clean.csv'
     )
     parser.add_argument(
         '--sql',
-        default=os.environ.get('APPLE_SQL', str(script_dir / '02_acs_setup.sql')),
-        help='Path to 02_acs_setup.sql. Default: <script dir>/02_acs_setup.sql'
+        default=os.environ.get('RETAIL_SQL', str(script_dir / '02_setup.sql')),
+        help='Path to 02_setup.sql. Default: <script dir>/02_setup.sql'
     )
     parser.add_argument(
         '--db',
-        default=os.environ.get('APPLE_DB', str(script_dir / 'apple_sales.db')),
-        help='Database file path. Default: <script dir>/apple_sales.db'
+        default=os.environ.get('RETAIL_DB', str(script_dir / 'retail_sales.db')),
+        help='Database file path. Default: <script dir>/retail_sales.db'
     )
     parser.add_argument(
         '--out',
-        default=os.environ.get('APPLE_OUT_DIR', str(script_dir / 'exports')),
+        default=os.environ.get('RETAIL_OUT_DIR', str(script_dir / 'exports')),
         help='Directory for output CSVs and charts. Default: <script dir>/exports'
     )
     args  = parser.parse_args()
@@ -140,7 +140,7 @@ def resolve_args() -> tuple[Path, Path, Path, Path]:
     out_p = Path(args.out)
 
     # CHANGE: replaced the hard-fail exists() check with the same multi-candidate
-    # search used in 01_acs_etl.py, covering both the given path and the script
+    # search used in 01_etl.py, covering both the given path and the script
     # directory in case the user passes a bare filename from a different cwd.
     # ORIGINAL:
     #     for p, flag in [(csv_p, '--csv'), (sql_p, '--sql')]:
@@ -190,16 +190,67 @@ def get_connection(db_path: Path):
 # Load CSV to database
 # ---------------------------------------------------------------------------
 
+# TESTED 2026-09-16: running this script against a real retail_sales.db that
+# had been created by an earlier run of the SQLite fallback path (duckdb not
+# installed at the time), then re-running with duckdb installed, reproduced:
+#     _duckdb.TransactionException: ... Failed to execute query "COMMIT": disk I/O error
+# The real cause has nothing to do with disk I/O — duckdb.connect() was opening
+# a file that is in SQLite's on-disk format, not DuckDB's, and fails with a
+# misleading error instead of a clear "wrong file format" message. This is a
+# real reproducibility trap: anyone who installs duckdb after already having
+# run this pipeline once will hit it. Fixed by checking the file's on-disk
+# magic bytes before connecting and rebuilding it if it doesn't match the
+# engine currently selected.
+
+_SQLITE_MAGIC = b'SQLite format 3\x00'
+_DUCKDB_MAGIC_OFFSET = 8
+_DUCKDB_MAGIC = b'DUCK'
+
+
+def _ensure_compatible_db_file(db_path: Path) -> None:
+    """
+    If db_path already exists but was written by a different DB engine than
+    the one currently selected (DB_ENGINE), delete it so the correct engine
+    can create a fresh file. Without this check, DuckDB opening a SQLite file
+    (or vice versa) fails with a cryptic low-level error instead of a clear one.
+    """
+    if not db_path.exists() or db_path.stat().st_size == 0:
+        return
+
+    with open(db_path, 'rb') as f:
+        header = f.read(16)
+
+    is_sqlite_file = header.startswith(_SQLITE_MAGIC)
+    is_duckdb_file = header[_DUCKDB_MAGIC_OFFSET:_DUCKDB_MAGIC_OFFSET + 4] == _DUCKDB_MAGIC
+
+    mismatch = (
+        (DB_ENGINE == 'duckdb' and is_sqlite_file) or
+        (DB_ENGINE == 'sqlite3' and is_duckdb_file)
+    )
+    if mismatch:
+        other_engine = 'sqlite3' if DB_ENGINE == 'duckdb' else 'duckdb'
+        print(
+            f'  NOTE: {db_path.name} was created by {other_engine} on a previous '
+            f'run, but this run is using {DB_ENGINE}. Rebuilding the file with '
+            f'{DB_ENGINE} so the pipeline stays idempotent regardless of which '
+            f'engine is installed.'
+        )
+        db_path.unlink()
+
+
 def load_csv_to_db(csv_path: Path, db_path: Path) -> None:
     """
-    Load apple_sales_clean.csv into the staging table stg_sales_raw.
+    Load retail_sales_clean.csv into the staging table stg_sales_raw.
 
     DuckDB registers the DataFrame as a virtual relation and creates the table
     in one step — no row-by-row inserts. SQLite uses pandas to_sql() with
     chunked parameterized inserts.
 
     The table is always dropped and recreated, making the script idempotent.
+    Before connecting, _ensure_compatible_db_file() checks that an existing
+    db file actually matches the current engine's format (see note above).
     """
+    _ensure_compatible_db_file(db_path)
     print(f'Loading {csv_path.name} into {db_path.name} [{DB_ENGINE}]...')
     df = pd.read_csv(csv_path, low_memory=False, parse_dates=['week_start_date'])
 
@@ -233,7 +284,7 @@ def load_csv_to_db(csv_path: Path, db_path: Path) -> None:
 
 def run_sql_setup(sql_path: Path, db_path: Path) -> None:
     """
-    Execute 02_acs_setup.sql against the database.
+    Execute 02_setup.sql against the database.
 
     The SQL file is split on semicolons and each statement executed individually.
     Statements that create or drop stg_sales_raw are skipped because
@@ -245,6 +296,7 @@ def run_sql_setup(sql_path: Path, db_path: Path) -> None:
     sql_text = sql_path.read_text()
 
     con = get_connection(db_path)
+    failed_statements = []
 
     # CHANGE: replaced simple semicolon split with a stripped + comment-filtered
     # loop that also skips blank statements.
@@ -284,13 +336,24 @@ def run_sql_setup(sql_path: Path, db_path: Path) -> None:
         except Exception as e:
             print(f'  WARN: skipped statement — {e}')
             print(f'        Statement preview: {stmt[:80].replace(chr(10), " ")}...')
+            failed_statements.append(stmt[:80].replace(chr(10), " "))
 
     if DB_ENGINE == 'sqlite3':
         con.commit()
 
     print_validation_counts(con)
     con.close()
-    print('  SQL setup complete.')
+
+    # TESTED 2026-09-16: a real DuckDB binder error in vw_dq_audit was being
+    # caught by the try/except above and printed as a single WARN line easy to
+    # miss in a long console log, while the script still printed "SQL setup
+    # complete" right after — which reads as success even when a view failed
+    # to build. This banner makes a partial failure impossible to miss.
+    if failed_statements:
+        print(f'\n  *** {len(failed_statements)} statement(s) FAILED to execute — see WARN lines above. ***')
+        print(f'  *** Any views/tables from those statements do NOT exist in {db_path.name}. ***')
+    else:
+        print('  SQL setup complete — all statements executed successfully.')
 
 
 def print_validation_counts(con) -> None:
@@ -298,7 +361,7 @@ def print_validation_counts(con) -> None:
     Print row counts after SQL setup to surface the filtering effect.
     The filtered count should be meaningfully lower than the raw count.
 
-    CHANGE: updated query to match the extended Section 5 in 02_acs_setup.sql,
+    CHANGE: updated query to match the extended Section 5 in 02_setup.sql,
     which now includes excluded_rows and exclusion_rate_pct.
     ORIGINAL: only printed two rows (stg_sales_raw and sales_clean).
     WHY: the exclusion rate gives an immediate sanity check — if it reads 0%
@@ -783,7 +846,7 @@ def main():
 
     print(f'\nAll outputs written to: {out_dir.resolve()}')
     print(f'Database: {db_path.resolve()}')
-    print('Tableau: connect to any .csv in the exports folder, or connect directly to apple_sales.db.')
+    print('Tableau: connect to any .csv in the exports folder, or connect directly to retail_sales.db.')
 
 
 if __name__ == '__main__':

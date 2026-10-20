@@ -1,0 +1,5 @@
+feature,coefficient,abs_coef,model_r2,model_mae
+age_band_enc,-2856.9487,2856.9487,0.762,14766.39
+gender_enc,2484.5058,2484.5058,0.762,14766.39
+product_category_enc,-1376.1885,1376.1885,0.762,14766.39
+total_quantity,99.6739,99.6739,0.762,14766.39

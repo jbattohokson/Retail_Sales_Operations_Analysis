@@ -1,13 +1,13 @@
 """
-01_acs_etl.py
+01_etl.py
 
-Apple Case Study — Step 1: Raw Data Cleanup and ETL
+Retail Case Study — Step 1: Raw Data Cleanup and ETL
 
 This is the first file in a three-step pipeline:
 
-    01_acs_etl.py       (this file)   Raw Excel/CSV -> cleaned flat CSV
-    02_acs_setup.sql                  Load CSV into DB, build views and aggregates
-    03_acs_analysis.py                Query DB -> Tableau exports + regression outputs
+    01_etl.py       (this file)   Raw Excel/CSV -> cleaned flat CSV
+    02_setup.sql                  Load CSV into DB, build views and aggregates
+    03_analysis.py                Query DB -> Tableau exports + regression outputs
 
 What this file does:
     The raw Excel file is in wide format: each weekly date is its own column
@@ -22,15 +22,15 @@ What this file does:
     quality issues before writing the output CSV that feeds the SQL layer.
 
 How to run:
-    python 01_acs_etl.py
-    python 01_acs_etl.py --input /data/Apple_Case_Study.csv --output /data/apple_sales_clean.csv
+    python 01_etl.py
+    python 01_etl.py --input /data/retail_case_study.csv --output /data/retail_sales_clean.csv
 
     Environment variables also work if you prefer not to use CLI args:
-    APPLE_CSV_IN=/data/Apple_Case_Study.csv
-    APPLE_CSV_OUT=/data/apple_sales_clean.csv
+    RETAIL_CSV_IN=/data/retail_case_study.csv
+    RETAIL_CSV_OUT=/data/retail_sales_clean.csv
 
 Output:
-    apple_sales_clean.csv  —  consumed by 02_acs_setup.sql via 03_acs_analysis.py
+    retail_sales_clean.csv  —  consumed by 02_setup.sql via 03_analysis.py
 
 Requirements:
     pip install pandas openpyxl
@@ -88,18 +88,18 @@ EXPECTED_MEASURES = frozenset({'Revenue', 'Cost', 'Quantity', 'Unit Cost', 'Unit
 
 def resolve_paths() -> tuple[Path, Path]:
     parser = argparse.ArgumentParser(
-        description='Apple Case Study ETL: wide Excel/CSV -> clean flat CSV'
+        description='Retail Case Study ETL: wide Excel/CSV -> clean flat CSV'
     )
     parser.add_argument(
         '--input', '-i',
-        default=os.environ.get('APPLE_CSV_IN', 'Apple_Case_Study.csv'),
-        help='Path to the raw input file (.csv or .xlsx). Default: ./Apple_Case_Study.csv'
+        default=os.environ.get('RETAIL_CSV_IN', 'retail_case_study.csv'),
+        help='Path to the raw input file (.csv or .xlsx). Default: ./retail_case_study.csv'
     )
     parser.add_argument(
         '--output', '-o',
         # CHANGE: default output path is now the script's own directory instead
         # of the current working directory.
-        # ORIGINAL: default=os.environ.get('APPLE_CSV_OUT', 'apple_sales_clean.csv')
+        # ORIGINAL: default=os.environ.get('RETAIL_CSV_OUT', 'retail_sales_clean.csv')
         # WHY: when Python is launched via the full /usr/local/bin/python3 path
         # (common on macOS), the working directory is often '/' which is a
         # read-only system partition. OSError Errno 30 "Read-only file system"
@@ -108,10 +108,10 @@ def resolve_paths() -> tuple[Path, Path]:
         # file and the rest of the project — so the write always succeeds
         # without requiring the user to cd first or pass --output every run.
         default=os.environ.get(
-            'APPLE_CSV_OUT',
-            str(Path(__file__).resolve().parent / 'apple_sales_clean.csv')
+            'RETAIL_CSV_OUT',
+            str(Path(__file__).resolve().parent / 'retail_sales_clean.csv')
         ),
-        help='Path for the cleaned output CSV. Default: <script dir>/apple_sales_clean.csv'
+        help='Path for the cleaned output CSV. Default: <script dir>/retail_sales_clean.csv'
     )
     args    = parser.parse_args()
     csv_in  = Path(args.input)
@@ -119,8 +119,8 @@ def resolve_paths() -> tuple[Path, Path]:
 
     # CHANGE: replaced the broken extensionless fallback with a multi-location
     # search that checks four candidate paths in order.
-    # ORIGINAL (broken): csv_in.with_suffix('') on 'Apple_Case_Study.csv' produces
-    # 'Apple_Case_Study' — the same name — so both the primary and fallback paths
+    # ORIGINAL (broken): csv_in.with_suffix('') on 'retail_case_study.csv' produces
+    # 'retail_case_study' — the same name — so both the primary and fallback paths
     # were identical and the error message printed the same path twice.
     # WHY: the real problem is that the script's working directory when run from
     # the terminal may not match the folder where the data file lives. Since all
@@ -132,7 +132,7 @@ def resolve_paths() -> tuple[Path, Path]:
     #   3. script_dir / filename.csv  (file is next to the script)
     #   4. script_dir / stem only     (file is next to the script, no extension)
     script_dir  = Path(__file__).resolve().parent
-    stem        = csv_in.stem  # filename without any extension, e.g. 'Apple_Case_Study'
+    stem        = csv_in.stem  # filename without any extension, e.g. 'retail_case_study'
     candidates  = [
         csv_in,                                   # exact path given
         csv_in.with_suffix(''),                   # strip .csv -> extensionless, same dir
@@ -147,7 +147,7 @@ def resolve_paths() -> tuple[Path, Path]:
         for p in candidates:
             print(f'       {p.resolve()}')
         print()
-        print('Fix: cd into the Apple_Case_Study_Analysis folder before running,')
+        print('Fix: cd into the Retail_Sales_Operations_Analysis folder before running,')
         print('     or pass --input with the full path to the data file.')
         sys.exit(1)
 
@@ -180,7 +180,7 @@ def load_raw(path: Path) -> pd.DataFrame:
     # ORIGINAL: extensionless files fell silently into the CSV else-branch with
     # no indication to the user of which reader was selected.
     # WHY: macOS sometimes exports CSVs without a .csv extension (your
-    # Apple_Case_Study file is a real example of this). Without this branch a
+    # retail_case_study file is a real example of this). Without this branch a
     # reviewer sees no confirmation that pandas is reading the file as CSV. If
     # the file were actually Excel the silent fallback would produce a garbled
     # DataFrame with no error message. Now the script explicitly confirms which
@@ -262,21 +262,25 @@ def melt_to_long(df: pd.DataFrame) -> pd.DataFrame:
     # openpyxl. Trying the ISO format first eliminates the warning and is faster.
     # If the format doesn't match (e.g. a CSV export with a different locale),
     # format=None falls back to dateutil inference without crashing.
-    try:
-        df_long['week_start_date'] = pd.to_datetime(
-            df_long['week_raw'], format='%Y-%m-%d %H:%M:%S', errors='coerce'
-        )
-        # If most parsed OK, keep it; otherwise retry with date-only format
-        if df_long['week_start_date'].isna().mean() > 0.5:
-            df_long['week_start_date'] = pd.to_datetime(
-                df_long['week_raw'], format='%Y-%m-%d', errors='coerce'
-            )
-        # Final fallback: format=None (inference) with warning suppressed
-        if df_long['week_start_date'].isna().mean() > 0.5:
-            df_long['week_start_date'] = pd.to_datetime(
-                df_long['week_raw'], format=None, errors='coerce'
-            )
-    except Exception:
+    # TESTED 2026-09-16: ran this ETL against the real retail_case_study.csv and
+    # confirmed the actual column header format is '28-Dec-14' (%d-%b-%y), which
+    # matches NEITHER of the two formats previously tried here. That meant every
+    # run silently fell through to the dateutil inference branch below, printing
+    # pandas's "Could not infer format" UserWarning and parsing 10-50x slower
+    # than a matched format string. Added the real format as the first attempt;
+    # the ISO formats stay as fallbacks in case a future .xlsx re-export changes
+    # the header format again, per the original comment above.
+    candidate_formats = ['%d-%b-%y', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d']
+    df_long['week_start_date'] = pd.NaT
+    for fmt in candidate_formats:
+        parsed = pd.to_datetime(df_long['week_raw'], format=fmt, errors='coerce')
+        if parsed.notna().mean() > 0.5:
+            df_long['week_start_date'] = parsed
+            break
+    else:
+        # None of the known formats matched — fall back to per-element inference
+        # rather than fail the run. Slower, but keeps the pipeline from crashing
+        # on an unexpected export format.
         df_long['week_start_date'] = pd.to_datetime(
             df_long['week_raw'], format=None, errors='coerce'
         )
@@ -350,7 +354,7 @@ def clean_and_derive(df: pd.DataFrame) -> pd.DataFrame:
     The SQL file reads what this script produces and does not re-derive values.
 
     Data quality flags are added here but used to drop rows in the SQL layer
-    (Section 4 of 02_acs_setup.sql). That keeps filter decisions transparent
+    (Section 4 of 02_setup.sql). That keeps filter decisions transparent
     and adjustable without re-running this ETL.
     """
     print('Cleaning types and deriving metrics...')
@@ -396,7 +400,7 @@ def clean_and_derive(df: pd.DataFrame) -> pd.DataFrame:
     #         labels=['17-24', '25-34', '35-44', '45-54', '55-64', '65+'],
     #         right=True,
     #     ).astype(str)
-    # WHY: the original labels matched those in 02_acs_setup.sql but the bins
+    # WHY: the original labels matched those in 02_setup.sql but the bins
     # used right=True with bin edge 24, meaning age 24 fell into '17-24' and
     # age 25 fell into '25-34'. This is correct. The change keeps the same
     # logic but adds an explicit comment so reviewers can verify the bin edges
@@ -498,7 +502,7 @@ def validate(df: pd.DataFrame) -> None:
     # segment had transactions for some measures (e.g. Quantity) but not others
     # in the same week. These are not missing values in the data quality sense;
     # they reflect the sparsity of the original wide-format Excel. The SQL layer
-    # (02_acs_setup.sql) handles them correctly via NULLIF() in every aggregation.
+    # (02_setup.sql) handles them correctly via NULLIF() in every aggregation.
     # Printing a raw WARN without this context would mislead a reviewer into
     # thinking the ETL had failed. The quantity column is excluded from the
     # threshold check for the same reason — it is always populated post-pivot.
@@ -523,7 +527,7 @@ def export(df: pd.DataFrame, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
     print(f'\n  Exported {df.shape[0]:,} rows to: {path.resolve()}')
-    print('  Next step: python 03_acs_analysis.py')
+    print('  Next step: python 03_analysis.py')
 
 
 # ---------------------------------------------------------------------------

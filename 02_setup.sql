@@ -1,19 +1,19 @@
--- 02_acs_setup.sql
+-- 02_setup.sql
 --
--- Apple Case Study — Step 2: Database Setup, Filtering, and Aggregation
+-- Retail Case Study — Step 2: Database Setup, Filtering, and Aggregation
 --
 -- This is the second file in a three-step pipeline:
 --
---     01_acs_etl.py      Reshapes raw Excel into apple_sales_clean.csv
---     02_acs_setup.sql   (this file) Loads CSV into DB, applies quality filters,
+--     01_etl.py      Reshapes raw Excel into retail_sales_clean.csv
+--     02_setup.sql   (this file) Loads CSV into DB, applies quality filters,
 --                        builds production views and Tableau-ready aggregates
---     03_acs_analysis.py Queries the DB views, exports CSVs, runs regression models
+--     03_analysis.py Queries the DB views, exports CSVs, runs regression models
 --
 -- What this file does:
---     Receives apple_sales_clean.csv from 01_acs_etl.py, loads it into a
+--     Receives retail_sales_clean.csv from 01_etl.py, loads it into a
 --     staging table, applies three data quality filters (no null states, no
 --     cities filed as states, only the 15 approved sub-categories), and creates
---     views that 03_acs_analysis.py queries to produce Tableau exports and
+--     views that 03_analysis.py queries to produce Tableau exports and
 --     regression inputs.
 --
 --     Filtering in SQL rather than Python keeps exclusion logic readable by any
@@ -21,12 +21,12 @@
 --     and directly verifiable in any DB client (DuckDB CLI, DB Browser, etc.).
 --
 -- How this file is executed:
---     03_acs_analysis.py reads this file from disk and executes it at runtime
+--     03_analysis.py reads this file from disk and executes it at runtime
 --     after loading the CSV. Single entry point — no separate terminal commands.
 --
 --     Manual execution for inspection:
---     DuckDB  :  duckdb apple_sales.db < 02_acs_setup.sql
---     SQLite  :  sqlite3 apple_sales.db < 02_acs_setup.sql
+--     DuckDB  :  duckdb retail_sales.db < 02_setup.sql
+--     SQLite  :  sqlite3 retail_sales.db < 02_setup.sql
 --
 -- Compatibility:
 --     All statements are written for compatibility with both DuckDB and SQLite.
@@ -38,11 +38,11 @@
 -- Section 1: Staging Table
 -- ==========================================================================
 --
--- Receives the output of 01_acs_etl.py. The schema mirrors exactly what the
--- Python ETL writes to apple_sales_clean.csv. If you add or rename a column
+-- Receives the output of 01_etl.py. The schema mirrors exactly what the
+-- Python ETL writes to retail_sales_clean.csv. If you add or rename a column
 -- in the ETL, update this schema to match.
 --
--- The actual INSERT is performed by 03_acs_analysis.py using pandas to_sql(),
+-- The actual INSERT is performed by 03_analysis.py using pandas to_sql(),
 -- which is why there is no COPY or INSERT statement here.
 
 DROP TABLE IF EXISTS stg_sales_raw;
@@ -130,7 +130,7 @@ INSERT INTO allowed_sub_categories (sub_category) VALUES
 -- CHANGE: added a fourth audit flag — rows with revenue = 0 — as a separate
 -- exclusion_reason category.
 -- ORIGINAL: only three exclusion reasons (no state, city as state, out-of-scope
--- sub-category). Zero-revenue rows were noted in 01_acs_etl.py but never surfaced
+-- sub-category). Zero-revenue rows were noted in 01_etl.py but never surfaced
 -- in the SQL audit.
 -- WHY: zero-revenue rows inflate unit counts and distort margin calculations.
 -- Having them in the audit view lets a reviewer quantify the exposure before
@@ -138,6 +138,17 @@ INSERT INTO allowed_sub_categories (sub_category) VALUES
 
 DROP VIEW IF EXISTS vw_dq_audit;
 
+-- TESTED 2026-09-16: running this view under DuckDB (the preferred engine per
+-- the header comment) failed outright:
+--   Binder Error: column "revenue" must appear in the GROUP BY clause or must
+--   be part of an aggregate function.
+-- SQLite's relaxed GROUP BY rules silently allowed the original version to
+-- "work" by picking an arbitrary row's revenue value within each group, which
+-- is not just a portability bug — it made exclusion_reason nondeterministic
+-- whenever a group mixed zero- and non-zero-revenue rows. Fixed by aggregating
+-- a has_zero_revenue flag with MAX() so the CASE expression only ever
+-- references grouped/aggregated values, which is correct under both engines
+-- and no longer depends on row order.
 CREATE VIEW vw_dq_audit AS
 SELECT
     state,
@@ -145,12 +156,14 @@ SELECT
     sub_category,
     geo_flag,
     state_flag,
-    COUNT(*)               AS row_count,
-    ROUND(SUM(revenue), 2) AS revenue_affected,
+    COUNT(*)                                          AS row_count,
+    ROUND(SUM(revenue), 2)                            AS revenue_affected,
+    SUM(CASE WHEN revenue = 0 THEN 1 ELSE 0 END)      AS zero_revenue_row_count,
     CASE
         WHEN state_flag = 'No State'             THEN 'Excluded: no state'
         WHEN geo_flag   = 'City Filed as State'  THEN 'Excluded: city as state'
-        WHEN revenue    = 0                      THEN 'Flagged: zero revenue'
+        WHEN MAX(CASE WHEN revenue = 0 THEN 1 ELSE 0 END) = 1
+                                                  THEN 'Flagged: zero revenue'
         ELSE 'Excluded: sub-category not in scope'
     END AS exclusion_reason
 FROM stg_sales_raw
@@ -182,7 +195,7 @@ ORDER BY row_count DESC;
 --     WHERE s.state_flag = 'Has State'
 --       AND s.geo_flag   = 'Clean'
 -- WHY: zero-revenue rows (cost recorded but no revenue) are noted in
--- 01_acs_etl.py and flagged in vw_dq_audit. Including them in sales_clean
+-- 01_etl.py and flagged in vw_dq_audit. Including them in sales_clean
 -- would inflate quantity totals and produce null or misleading margin values
 -- in every downstream view. Explicit exclusion here makes the filter
 -- decision visible and auditable.
@@ -226,7 +239,7 @@ WHERE s.state_flag = 'Has State'
 -- Section 5: Row Count Validation
 -- ==========================================================================
 --
--- Quick sanity check printed to console by 03_acs_analysis.py after setup runs.
+-- Quick sanity check printed to console by 03_analysis.py after setup runs.
 -- The filtered count should be meaningfully lower than the raw count due to
 -- the four exclusion rules. If the numbers look equal, the filters did not apply.
 --
@@ -418,7 +431,7 @@ ORDER BY year_month;
 -- ==========================================================================
 --
 -- Age band and gender segmentation for Tableau and regression inputs.
--- One row per age_band / gender / product_category gives 03_acs_analysis.py
+-- One row per age_band / gender / product_category gives 03_analysis.py
 -- enough granularity to run demographic regression without re-querying
 -- sales_clean directly.
 
