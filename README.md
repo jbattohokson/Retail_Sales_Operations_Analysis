@@ -1,42 +1,78 @@
-# Apple Retail Finance Case Study — Sales & Margin Analysis
+# Retail Finance Case Study: Sales & Margin Analysis
 
-This project is a completed take-home case study for an Apple Retail Finance PART Manager interview loop (see `docs/case_study_prompt.docx` for the original brief). Stating that plainly here rather than presenting it as client work: the prompt, the dataset, and the three business constraints below all came from Apple's own interview packet, and this repo is my worked solution to it.
+A completed take-home case study for a retail finance interview loop (`docs/case_study_prompt.docx` is the original brief). The prompt, dataset and constraints come from the interview packet; this repo is my worked solution, not client work.
 
-**Business question the case study asks:** build a system to identify financial trends over time, with three hard constraints from the interview stakeholders — (1) financial statements must be reported at the state level, (2) customer demographics (age/gender) are collected but never used in analysis today, and (3) the new system is scoped to 15 approved sub-categories, excluding 2 out of the 17 in the raw data.
+## The problem
 
-## Key finding
+Build a system that shows financial trends over time for a bike and accessories retailer, under three constraints from the brief:
 
-Overall gross margin across the 15 in-scope sub-categories is 14.4% on $5.77M of qualifying revenue (14,707 clean transaction-weeks, after excluding 31.5% of raw rows for no-state, city-filed-as-state, zero-revenue, and out-of-scope sub-category issues — see `vw_dq_audit` in the database for the full breakdown by reason). A monthly OLS regression shows a statistically significant upward revenue trend (R²=0.67, p<0.001); a second regression reaches R²=0.76, but quantity alone explains R²=0.75, so age band, gender and category add less than 0.01. The categorical terms are label-encoded, which treats them as ordered numbers; refitting with one-hot encoding is the next step before reading any demographic effect from this model.
+1. Financial statements are reported **at the state level**.
+2. Customer age and gender are collected but never used today. **Should they be?**
+3. The system covers **15 approved sub-categories** (2 of the 17 in the raw data are out of scope).
 
-## Pipeline
+## What I built
 
-1. `01_etl.py` — reshapes the raw wide-format export (84 weekly columns) into a clean flat CSV, deriving gross profit, margin, age bands, and geography quality flags.
-2. `02_setup.sql` — loads the clean CSV into a database, applies the case study's own filtering rules, and builds the views used for both the audit trail and the Tableau exports.
-3. `03_analysis.py` — runs the SQL setup, exports four Tableau-ready CSVs, and fits two OLS regressions (monthly revenue trend, demographic revenue drivers).
+1. **`01_etl.py`** reshapes the raw export (one column per week, one row per measure) into one row per customer segment x product x state x week, and derives gross profit, margin, date fields, age bands and data-quality flags.
+2. **`02_setup.sql`** loads that table into DuckDB (SQLite also works), applies the brief's rules, and builds the reporting views plus an audit view, `vw_dq_audit`, that gives every excluded row exactly one reason.
+3. **`03_analysis.py`** runs the SQL, exports Tableau-ready CSVs, and fits the trend and demographic models.
+
+Of 26,240 segment-weeks ($7.31M revenue), 14,707 ($5.77M) qualify:
+
+| Exclusion (first rule that applies) | Rows | Revenue |
+|---|---:|---:|
+| No state: every United Kingdom row | 4,777 | $1,305,705 |
+| Quantity/cost recorded but no revenue | 5,641 | — |
+| Sub-category out of scope (Touring Bikes, Bike Stands) | 1,099 | $230,449 |
+| City filed as state (Chicago, Miami) | 16 | $4,962 |
+
+## Findings
+
+1. **Gross margin is 14.8%** on $5.77M of in-scope revenue, measured on rows with a recorded cost. 175 rows ($160K) have revenue but no cost and are left out of the margin denominator.
+2. **US Bikes lose money: −2.1% gross margin**, a $9.8K gross loss on the $472K of US bike revenue with a recorded cost. Germany sells bikes at 16.7%, so this is a US price or cost problem, not a category problem. Another $101K of US bike revenue (18%) has no recorded cost at all.
+3. **Germany out-earns the US in every category:** Accessories 30.2% vs 14.6%, Clothing 28.5% vs 12.8%, Bikes 16.7% vs −2.1%. France is lowest (Accessories 14.0%, Bikes 1.1%).
+4. **The "10x growth" in mid-2015 is the catalog filling in, not demand.** Through the week of 21 June 2015 the only sub-category with sales is Road Bikes. Eleven more first sell between 28 June and 12 July 2015; Fenders, Gloves and Bike Racks start in Dec 2015/Jan 2016. A linear trend over all 20 months says +$30.8K/month (R² 0.67, p<0.001), but its residuals are autocorrelated (Durbin-Watson 0.91). **Like-for-like**, the 12 sub-categories sold every month from Aug 2015 to Jun 2016, the trend is +$5.8K/month with **p = 0.33: no significant growth.**
+5. **Age matters a little; gender doesn't.** On 174 segment cells, quantity and product category explain R² 0.78 of revenue. Adding age band and gender (one-hot) raises it to 0.80, and the joint F-test is significant (p = 0.016; p < 0.001 with robust errors), almost entirely from the 25–34 band: about +$15K per segment vs 17–24 at the same quantity and category (p = 0.013). Male vs female: p = 0.54.
+
+## Recommendations
+
+1. **US bike pricing review (P1).** Find the price change that reaches breakeven at current volume. Fix cost capture on the $101K of US bike revenue with no cost before setting the target.
+2. **Explain the Germany margin gap (P2).** Compare unit price, unit cost and mix by SKU across markets to tell price, cost and mix apart.
+3. **Confirm the mid-2015 range launch (P2).** Were those 11 sub-categories launched in June/July 2015, or only recorded from then on? Either way, forecast from August 2015 onward.
+4. **Use age, skip gender (P3).** The 25–34 band buys a pricier mix. Test bike-checkout accessory offers (Fenders and Bike Racks carry the highest margins, 21–22%) on that band first.
+
+## Run it
 
 ```bash
 pip install -r requirements.txt
-python 01_etl.py
-python 03_analysis.py
+python 01_etl.py         # -> retail_sales_clean.csv
+python 03_analysis.py    # -> retail_sales.db + exports/
+python -m pytest tests/
 ```
 
-Both DuckDB and SQLite are supported (DuckDB preferred, auto-detected). Outputs land in `exports/`.
+`exports/` holds the Tableau CSVs (`tableau_*.csv`), `regression_trend_comparison.csv` (full-period vs like-for-like), `subcategory_launch_dates.csv`, `regression_demographics.csv` and two charts.
 
 ## Tools
 
-Python (pandas, statsmodels/scikit-learn, matplotlib), SQL (DuckDB/SQLite), Tableau Public.
+Python (pandas, statsmodels, matplotlib), SQL (DuckDB / SQLite), Tableau Public, pytest.
 
 ## Dashboard
 
-*(Add the public.tableau.com link here once `Retail_Sales_Operations_Analysis.twbx` is republished.)*
+*(Add the public.tableau.com link once `Retail_Sales_Operations_Analysis.twbx` is republished. Refresh its data extract so it picks up the cost-matched margins in `exports/`.)*
 
-## Bugs found and fixed while testing this pipeline (2026-09-16)
+## Audit log
 
-Running the full pipeline three times end-to-end surfaced two real bugs that had never been caught before, both now fixed and re-verified across 3 clean runs with identical output on every run:
+**2026-10-21 audit and rebuild**
+- **The UK was silently dropped.** `pivot_table` discards rows whose key contains a NaN, and every UK row has a blank State. $1.31M (17.9% of raw revenue) disappeared before the no-state rule or the audit view saw it. The ETL now keeps those rows through the pivot and checks that the pivot conserves every value. Kept totals don't change, because the UK is excluded either way, but the exclusion is now visible and counted.
+- **The audit view missed 83% of exclusions.** `revenue = 0` never matches NULL, and the ETL writes NULL for rows with quantity/cost but no revenue (5,641 rows). Reasons were also picked per group, so a mixed group got one label. It is now row-level, first match wins, and `kept + audited = staged` is tested.
+- **Margins counted revenue with no cost as zero-margin sales.** Every margin now divides by revenue on rows with a recorded cost: overall 14.43% → 14.84%, US Bikes −1.7% → −2.1%.
+- **The trend headline was the catalog expanding.** Added the like-for-like fit, Durbin-Watson, and the sub-category launch table (see finding 4).
+- **The demographic model label-encoded categories,** forcing an order and equal spacing onto gender and category. It is refit as nested one-hot OLS with an F-test.
+- **A semicolon inside a SQL comment split a statement in two.** The runner now strips comments before splitting, and a failed statement exits non-zero instead of printing a warning and carrying on.
+- **Page fixes:** script names (`01_acs_etl.py` etc. didn't exist), UK scope, cost-matched margins, the like-for-like result, the demographic result, and gender splits (17–24 is 42/58, 25–34 is 45/55).
+- **Tests added** (`tests/test_pipeline.py`): blank-state rows surviving the pivot, audit reconciliation with one row per exclusion rule, cost-matched margins, a semicolon in a comment, a failed statement exiting 1, like-for-like sub-category selection, and recovery of a known trend. The full pipeline also produces identical exports on DuckDB and SQLite.
 
-1. **Date parsing silently fell back to slow inference on every run.** The raw CSV's week columns use `28-Dec-14` format (`%d-%b-%y`), which matched neither of the two formats the ETL tried first. Every run silently dropped to pandas's per-element dateutil inference, which is 10-50x slower and prints a `UserWarning`. Fixed by adding the actual format as the first attempt in `01_etl.py`.
-2. **`vw_dq_audit` never actually built under DuckDB.** The view's `CASE WHEN revenue = 0` referenced a non-aggregated column inside a `GROUP BY` query, which DuckDB correctly rejects and SQLite silently (and nondeterministically) allowed. Because `03_analysis.py` catches and warns on failed statements rather than crashing, this failure was easy to miss — the script still printed "SQL setup complete." Fixed by aggregating a `has_zero_revenue` flag with `MAX()` in `02_setup.sql`, and added a pass/fail summary banner to `03_analysis.py` so a partial SQL failure can never again look like a clean run.
+**2026-09-16**
+1. Week headers are `28-Dec-14` (`%d-%b-%y`), a format the ETL didn't try, so every run fell back to slow per-element date parsing. Fixed.
+2. `vw_dq_audit` never built under DuckDB (a non-aggregated column in a `GROUP BY`), and the script printed "SQL setup complete" anyway. Fixed and given a pass/fail banner.
 
-## Repo hygiene note
-
-Three identical (byte-for-byte, confirmed via checksum) Tableau workbook saves (`_D1`/`_D2`/`_D3`) were consolidated into one file, `Retail_Sales_Operations_Analysis.twbx`.
+Three byte-identical Tableau workbook saves were consolidated into `Retail_Sales_Operations_Analysis.twbx`.

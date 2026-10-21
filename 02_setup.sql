@@ -149,31 +149,40 @@ DROP VIEW IF EXISTS vw_dq_audit;
 -- a has_zero_revenue flag with MAX() so the CASE expression only ever
 -- references grouped/aggregated values, which is correct under both engines
 -- and no longer depends on row order.
+-- AUDITED 2026-10-21: the grouped version above still had two gaps.
+--   * WHERE revenue = 0 never matches NULL, and the ETL leaves revenue NULL
+--     (not 0) when a row has quantity/cost but no revenue, so 5,641 of the
+--     6,756 rows that sales_clean drops never appeared here.
+--   * The reason was decided per group, so an out-of-scope group with one
+--     zero-revenue row was relabelled "zero revenue" as a whole.
+-- Each row now gets exactly one reason (first match wins, same order as the
+-- sales_clean filters), so SUM(row_count) here + COUNT(*) of sales_clean
+-- = COUNT(*) of stg_sales_raw. tests/test_pipeline.py checks that identity.
 CREATE VIEW vw_dq_audit AS
+WITH reasons AS (
+    SELECT
+        s.*,
+        CASE
+            WHEN s.state_flag = 'No State'            THEN 'Excluded: no state'
+            WHEN s.geo_flag   = 'City Filed as State' THEN 'Excluded: city as state'
+            WHEN a.sub_category IS NULL               THEN 'Excluded: sub-category not in scope'
+            WHEN s.revenue IS NULL                    THEN 'Excluded: no revenue recorded'
+            WHEN s.revenue <= 0                       THEN 'Excluded: zero revenue'
+        END AS exclusion_reason
+    FROM stg_sales_raw s
+    LEFT JOIN allowed_sub_categories a
+        ON s.sub_category = a.sub_category
+)
 SELECT
-    state,
+    exclusion_reason,
     country,
+    state,
     sub_category,
-    geo_flag,
-    state_flag,
-    COUNT(*)                                          AS row_count,
-    ROUND(SUM(revenue), 2)                            AS revenue_affected,
-    SUM(CASE WHEN revenue = 0 THEN 1 ELSE 0 END)      AS zero_revenue_row_count,
-    CASE
-        WHEN state_flag = 'No State'             THEN 'Excluded: no state'
-        WHEN geo_flag   = 'City Filed as State'  THEN 'Excluded: city as state'
-        WHEN MAX(CASE WHEN revenue = 0 THEN 1 ELSE 0 END) = 1
-                                                  THEN 'Flagged: zero revenue'
-        ELSE 'Excluded: sub-category not in scope'
-    END AS exclusion_reason
-FROM stg_sales_raw
-WHERE state_flag = 'No State'
-   OR geo_flag   = 'City Filed as State'
-   OR revenue    = 0
-   OR sub_category NOT IN (
-        SELECT sub_category FROM allowed_sub_categories
-   )
-GROUP BY state, country, sub_category, geo_flag, state_flag
+    COUNT(*)                     AS row_count,
+    ROUND(SUM(revenue), 2)       AS revenue_affected
+FROM reasons
+WHERE exclusion_reason IS NOT NULL
+GROUP BY exclusion_reason, country, state, sub_category
 ORDER BY row_count DESC;
 
 
@@ -286,7 +295,13 @@ SELECT
 -- same Tableau workbook without needing a data blend.
 --
 -- margin_pct is recalculated here from summed revenue and gross profit rather
--- than averaging row-level margin_pct values. Averaging percentages produces
+-- than averaging row-level margin_pct values.
+--
+-- AUDITED 2026-10-21: every margin in this file divides by revenue on rows
+-- that also have a cost. 175 clean rows ($159.6K) record revenue with no cost,
+-- so their gross_profit is NULL, and dividing by all revenue counted them as
+-- zero-margin sales and understated margin (overall 14.43% vs 14.84%, US Bikes
+-- -1.7% vs -2.1%). Averaging percentages produces
 -- incorrect results when row sizes differ — always aggregate numerator and
 -- denominator separately, then divide.
 
@@ -307,7 +322,7 @@ SELECT
     SUM(cost)                                                     AS total_cost,
     SUM(gross_profit)                                             AS total_gross_profit,
     SUM(quantity)                                                 AS total_quantity,
-    ROUND(SUM(gross_profit) / NULLIF(SUM(revenue), 0) * 100, 2)  AS margin_pct,
+    ROUND(SUM(gross_profit) / NULLIF(SUM(CASE WHEN gross_profit IS NOT NULL THEN revenue END), 0) * 100, 2)  AS margin_pct,
     ROUND(AVG(unit_price), 2)                                     AS avg_unit_price,
     ROUND(AVG(unit_cost),  2)                                     AS avg_unit_cost
 FROM sales_clean
@@ -341,7 +356,7 @@ SELECT
     SUM(cost)                                                     AS total_cost,
     SUM(gross_profit)                                             AS total_gross_profit,
     SUM(quantity)                                                 AS total_quantity,
-    ROUND(SUM(gross_profit) / NULLIF(SUM(revenue), 0) * 100, 2)  AS margin_pct,
+    ROUND(SUM(gross_profit) / NULLIF(SUM(CASE WHEN gross_profit IS NOT NULL THEN revenue END), 0) * 100, 2)  AS margin_pct,
     ROUND(SUM(revenue) / NULLIF(SUM(quantity), 0), 2)            AS revenue_per_unit,
     RANK() OVER (ORDER BY SUM(revenue) DESC)                      AS revenue_rank_overall,
     RANK() OVER (
@@ -382,6 +397,7 @@ WITH monthly AS (
         month_name,
         SUM(revenue)      AS monthly_revenue,
         SUM(gross_profit) AS monthly_gross_profit,
+        SUM(CASE WHEN gross_profit IS NOT NULL THEN revenue END) AS monthly_costed_revenue,
         SUM(quantity)     AS monthly_quantity
     FROM sales_clean
     GROUP BY year_month, sale_year, sale_quarter, sale_month, month_name
@@ -396,7 +412,7 @@ SELECT
     monthly_gross_profit,
     monthly_quantity,
     ROUND(
-        monthly_gross_profit / NULLIF(monthly_revenue, 0) * 100,
+        monthly_gross_profit / NULLIF(monthly_costed_revenue, 0) * 100,
         2
     )                                                AS margin_pct,
     LAG(monthly_revenue) OVER (ORDER BY year_month)  AS prior_month_revenue,
@@ -447,7 +463,7 @@ SELECT
     SUM(revenue)                                                  AS total_revenue,
     SUM(gross_profit)                                             AS total_gross_profit,
     SUM(quantity)                                                 AS total_quantity,
-    ROUND(SUM(gross_profit) / NULLIF(SUM(revenue), 0) * 100, 2)  AS margin_pct,
+    ROUND(SUM(gross_profit) / NULLIF(SUM(CASE WHEN gross_profit IS NOT NULL THEN revenue END), 0) * 100, 2)  AS margin_pct,
     ROUND(AVG(unit_price), 2)                                     AS avg_unit_price,
     ROUND(SUM(revenue) / NULLIF(SUM(quantity), 0), 2)            AS revenue_per_unit
 FROM sales_clean
@@ -483,7 +499,7 @@ SELECT
     SUM(revenue)                                                   AS total_revenue,
     SUM(gross_profit)                                              AS total_gross_profit,
     SUM(quantity)                                                  AS total_quantity,
-    ROUND(SUM(gross_profit) / NULLIF(SUM(revenue), 0) * 100, 2)   AS margin_pct,
+    ROUND(SUM(gross_profit) / NULLIF(SUM(CASE WHEN gross_profit IS NOT NULL THEN revenue END), 0) * 100, 2)   AS margin_pct,
     ROUND(SUM(revenue) / NULLIF(SUM(quantity), 0), 2)             AS revenue_per_unit,
 
     -- avg_transaction_value: revenue per row (visit/transaction), not per item

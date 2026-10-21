@@ -81,6 +81,9 @@ MEASURE_RENAME = {
 CITY_AS_STATE     = frozenset({'Chicago', 'Miami'})
 EXPECTED_MEASURES = frozenset({'Revenue', 'Cost', 'Quantity', 'Unit Cost', 'Unit Price'})
 
+# Placeholder for blank dimension values during the pivot (see pivot_measures)
+_MISSING_KEY = '__MISSING__'
+
 
 # ---------------------------------------------------------------------------
 # CLI / path resolution
@@ -314,6 +317,14 @@ def pivot_measures(df_long: pd.DataFrame) -> pd.DataFrame:
 
     index_cols = [c for c in REQUIRED_DIM_COLS if c != 'Measure'] + ['week_start_date']
 
+    # AUDITED 2026-10-21: pivot_table silently drops every row whose index has a
+    # NaN, and every United Kingdom row has a blank State. The whole UK market
+    # ($1.31M, 17.9% of raw revenue) vanished here, before the state_flag /
+    # vw_dq_audit logic that is supposed to exclude and report it ever saw it.
+    # Fill blank keys with a sentinel for the pivot, then restore them as NaN.
+    df_long = df_long.copy()
+    df_long[index_cols] = df_long[index_cols].astype(object).fillna(_MISSING_KEY)
+
     df_pivot = df_long.pivot_table(
         index=index_cols,
         columns='Measure',
@@ -322,6 +333,13 @@ def pivot_measures(df_long: pd.DataFrame) -> pd.DataFrame:
     ).reset_index()
 
     df_pivot.columns.name = None
+    df_pivot[index_cols] = df_pivot[index_cols].replace(_MISSING_KEY, np.nan)
+
+    kept_value = df_pivot[[c for c in EXPECTED_MEASURES if c in df_pivot]].sum().sum()
+    if not np.isclose(kept_value, df_long['value'].sum()):
+        raise ValueError(
+            f'pivot lost data: {df_long["value"].sum():,.0f} in, {kept_value:,.0f} out'
+        )
 
     # CHANGE: replaced set subtraction check with a comparison against the
     # EXPECTED_MEASURES constant defined at the top of the file.
